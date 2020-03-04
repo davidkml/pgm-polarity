@@ -8,10 +8,14 @@ from sklearn_crfsuite import metrics
 import sklearn_crfsuite
 from pystruct.models import GraphCRF, EdgeFeatureGraphCRF
 from pystruct.learners import FrankWolfeSSVM
+import pickle
+from feature_embedding import MLP
+import torch
 
 class CrfClassifier:
     def __init__(self):
         self.top_seq = 200
+        self.embedding_dim = 50
 
     def establish_vocabulary(self):
         word_freq = {}
@@ -179,6 +183,7 @@ class CrfClassifier:
 
         total_datas = []
         total_labels = []
+        print('num_user', len(bags.keys()))
         for user_id, bag in bags.items():
             if not user_id in labels:
                 continue
@@ -186,7 +191,7 @@ class CrfClassifier:
             edge_nodes = np.empty((0, 2))
             edge_features = np.empty((0, 1))
             clique_labels = np.array([labels[user_id]])
-            features = np.vstack([features, bag])
+            features = np.vstack([features/np.sum(features), bag])
             mentioned_ids = mentions[user_id]
             cnt = 0
             for mentioned_id in enumerate(mentioned_ids):
@@ -194,7 +199,7 @@ class CrfClassifier:
                     continue
                 clique_labels = np.append(clique_labels, np.array([labels[mentioned_id]]))
                 if mentioned_id in bags:
-                    features = np.vstack([features, bags[mentioned_id]])
+                    features = np.vstack([features/np.sum(features), bags[mentioned_id]])
                 else:
                     features = np.vstack([features, np.zeros(self.top_seq)])
                 edge_nodes = np.vstack([edge_nodes, np.array([0, cnt + 1])])
@@ -209,7 +214,7 @@ class CrfClassifier:
                     continue
                 clique_labels = np.append(clique_labels, np.array([labels[retweet_id]]))
                 if retweet_id in bags:
-                    features = np.vstack([features, bags[retweet_id]])
+                    features = np.vstack([features/np.sum(features), bags[retweet_id]])
                 else:
                     features = np.vstack([features, np.zeros(self.top_seq)])
                 edge_nodes = np.vstack([edge_nodes, np.array([0, cnt + 1 + num_mentioned])])
@@ -225,14 +230,101 @@ class CrfClassifier:
         X_train, y_train = total_datas[:ratio], total_labels[:ratio]
         X_test, y_test = total_datas[ratio:], total_labels[ratio:]
 
+
         model = EdgeFeatureGraphCRF(inference_method="max-product")
-        ssvm = FrankWolfeSSVM(model=model, C=1, max_iter=10)
+        ssvm = FrankWolfeSSVM(model=model, C=0.2, max_iter=50)
         ssvm.fit(X_train, y_train)
         result = ssvm.score(X_test, y_test)
         print(result)
 
+    def to_train_embedding(self, bags, labels):
+        total_features = []
+        total_labels = []
+        for user_id, bag in bags.items():
+            if user_id in labels:
+                total_features.append(bag/np.sum(bag))
+                total_labels.append(labels[user_id])
 
+        with open('feature_ori.p', 'wb') as f:
+            pickle.dump(total_features, f)
 
+        with open('label.p', 'wb') as f:
+            pickle.dump(total_labels, f)
+
+    def extract_feature(self, data):
+        net = MLP()
+        net.load_state_dict(torch.load('./cptk/model_20.pth'))
+        ##### For GPU #######
+        if torch.cuda.is_available():
+            net.cuda()
+        net.eval()
+        feature_dict = {}
+        for user_id, bag in data.items():
+            input = torch.from_numpy(bag).float().cuda()
+            _, embedding = net(torch.autograd.Variable(input))
+            feature_dict[user_id] = embedding.data.cpu().numpy()
+
+        with open('embedding_feature.p', 'wb') as f:
+            pickle.dump(feature_dict, f)
+
+    def embedding_training(self, mentions, retweets, labels):
+        with open('embedding_feature.p', 'rb') as f:
+            bags = pickle.load(f)
+
+        print('num_user', len(bags.keys()))
+        total_datas = []
+        total_labels = []
+        for user_id, bag in bags.items():
+            if not user_id in labels:
+                continue
+            features = np.empty((0, self.embedding_dim))
+            edge_nodes = np.empty((0, 2))
+            edge_features = np.empty((0, 1))
+            clique_labels = np.array([labels[user_id]])
+            features = np.vstack([features, bag])
+            mentioned_ids = mentions[user_id]
+            cnt = 0
+            for mentioned_id in enumerate(mentioned_ids):
+                if not mentioned_id in labels:
+                    continue
+                clique_labels = np.append(clique_labels, np.array([labels[mentioned_id]]))
+                if mentioned_id in bags:
+                    features = np.vstack([features, bags[mentioned_id]])
+                else:
+                    features = np.vstack([features, np.zeros(self.embedding_dim)])
+                edge_nodes = np.vstack([edge_nodes, np.array([0, cnt + 1])])
+                edge_features = np.vstack([edge_features, np.array([[0]])])
+                cnt += 1
+
+            num_mentioned = edge_nodes.shape[0]
+            retweet_ids = retweets[user_id]
+            cnt = 0
+            for retweet_id in retweet_ids:
+                if not retweet_id in labels:
+                    continue
+                clique_labels = np.append(clique_labels, np.array([labels[retweet_id]]))
+                if retweet_id in bags:
+                    features = np.vstack([features, bags[retweet_id]])
+                else:
+                    features = np.vstack([features, np.zeros(self.embedding_dim)])
+                edge_nodes = np.vstack([edge_nodes, np.array([0, cnt + 1 + num_mentioned])])
+                edge_features = np.vstack([edge_features, np.array([[1]])])
+                cnt += 1
+
+            total_datas.append((features, edge_nodes.astype(int), edge_features))
+            total_labels.append(clique_labels)
+
+        ratio = len(total_datas) * 0.7
+        ratio = int(ratio)
+        print(ratio)
+        X_train, y_train = total_datas[:ratio], total_labels[:ratio]
+        X_test, y_test = total_datas[ratio:], total_labels[ratio:]
+
+        model = EdgeFeatureGraphCRF(inference_method="max-product")
+        ssvm = FrankWolfeSSVM(model=model, C=0.5, max_iter=10)
+        ssvm.fit(X_train, y_train)
+        result = ssvm.score(X_test, y_test)
+        print(result)
 
 
 if __name__ == '__main__':
@@ -242,12 +334,15 @@ if __name__ == '__main__':
     vocabulary = crf.establish_vocabulary()
     assert  len(vocabulary) == crf.top_seq
     bags = crf.establish_bag(user_tags, vocabulary)
+    # crf.to_train_embedding(bags, labels)
+    # crf.extract_feature(bags)
+    crf.embedding_training(mentions, retweets, labels)
     # for key in bags.keys():
     #     print(bags[key])
     # features, labels = crf.node2feature(bags, mentions, retweets, labels)
     # crf.suitetraining(features, labels)
 
-    crf.structraining(bags, mentions, retweets, labels)
+    # crf.structraining(bags, mentions, retweets, labels)
 
 
 

@@ -77,6 +77,30 @@ class CrfClassifier:
         # print(user_tags)  # each user has tags from mentions & retweets
         return mentions, retweets, user_tags
 
+    def establish_dict_using_all(self):
+        all_file_path = Path('data/icwsm_polarization/all.edgelist')
+
+        all_edgelist = pd.read_csv(all_file_path).values.tolist()
+
+        mentions, retweets, user_tags = defaultdict(list), defaultdict(list), defaultdict(list)
+
+        for m in all_edgelist:
+            curr = m[0].split()
+            tags = curr[5:]
+            if curr[2] == 'retweet':
+                retweets[curr[1]].append(curr[0])
+                if not curr[1] in user_tags:
+                    user_tags[curr[1]] = tags
+                else:
+                    user_tags[curr[1]].extend(tags)
+            if curr[2] == 'reply':
+                mentions[curr[0]].append(curr[1])
+                if not curr[0] in user_tags:
+                    user_tags[curr[0]] = tags
+                else:
+                    user_tags[curr[0]].extend(tags)
+        return mentions, retweets, user_tags
+
     def establish_bag(self, user_tags, vocabulary):
         bag = dict()
         for user_id, tags in user_tags.items():
@@ -180,7 +204,6 @@ class CrfClassifier:
         print(result)
 
     def structraining(self, bags, mentions, retweets, labels):
-
         total_datas = []
         total_labels = []
         print('num_user', len(bags.keys()))
@@ -191,7 +214,7 @@ class CrfClassifier:
             edge_nodes = np.empty((0, 2))
             edge_features = np.empty((0, 1))
             clique_labels = np.array([labels[user_id]])
-            features = np.vstack([features/np.sum(features), bag])
+            features = np.vstack([features, bag])
             mentioned_ids = mentions[user_id]
             cnt = 0
             for mentioned_id in enumerate(mentioned_ids):
@@ -199,7 +222,7 @@ class CrfClassifier:
                     continue
                 clique_labels = np.append(clique_labels, np.array([labels[mentioned_id]]))
                 if mentioned_id in bags:
-                    features = np.vstack([features/np.sum(features), bags[mentioned_id]])
+                    features = np.vstack([features, bags[mentioned_id]])
                 else:
                     features = np.vstack([features, np.zeros(self.top_seq)])
                 edge_nodes = np.vstack([edge_nodes, np.array([0, cnt + 1])])
@@ -214,7 +237,7 @@ class CrfClassifier:
                     continue
                 clique_labels = np.append(clique_labels, np.array([labels[retweet_id]]))
                 if retweet_id in bags:
-                    features = np.vstack([features/np.sum(features), bags[retweet_id]])
+                    features = np.vstack([features, bags[retweet_id]])
                 else:
                     features = np.vstack([features, np.zeros(self.top_seq)])
                 edge_nodes = np.vstack([edge_nodes, np.array([0, cnt + 1 + num_mentioned])])
@@ -230,9 +253,8 @@ class CrfClassifier:
         X_train, y_train = total_datas[:ratio], total_labels[:ratio]
         X_test, y_test = total_datas[ratio:], total_labels[ratio:]
 
-
         model = EdgeFeatureGraphCRF(inference_method="max-product")
-        ssvm = FrankWolfeSSVM(model=model, C=0.2, max_iter=50)
+        ssvm = FrankWolfeSSVM(model=model, C=0.1, max_iter=10)
         ssvm.fit(X_train, y_train)
         result = ssvm.score(X_test, y_test)
         print(result)
@@ -321,7 +343,7 @@ class CrfClassifier:
         X_test, y_test = total_datas[ratio:], total_labels[ratio:]
 
         model = EdgeFeatureGraphCRF(inference_method="max-product")
-        ssvm = FrankWolfeSSVM(model=model, C=0.5, max_iter=10)
+        ssvm = FrankWolfeSSVM(model=model, C=1, max_iter=10)
         ssvm.fit(X_train, y_train)
         result = ssvm.score(X_test, y_test)
         print(result)
@@ -330,19 +352,24 @@ class CrfClassifier:
 if __name__ == '__main__':
     crf = CrfClassifier()
     labels = crf.get_labels()
-    mentions, retweets, user_tags = crf.establish_dict()
+    mentions, retweets, user_tags = crf.establish_dict_using_all()
     vocabulary = crf.establish_vocabulary()
     assert  len(vocabulary) == crf.top_seq
-    bags = crf.establish_bag(user_tags, vocabulary)
+    # bags = crf.establish_bag(user_tags, vocabulary)
     # crf.to_train_embedding(bags, labels)
     # crf.extract_feature(bags)
-    crf.embedding_training(mentions, retweets, labels)
+    # crf.embedding_training(mentions, retweets, labels)
     # for key in bags.keys():
     #     print(bags[key])
     # features, labels = crf.node2feature(bags, mentions, retweets, labels)
     # crf.suitetraining(features, labels)
+    with open("./objects/pca200_df.pickle", 'rb') as f:
+        bags = pickle.load(f)
+    pca_dict= {}
+    for i in range(bags.shape[0]):
+        pca_dict[str(i)] = bags.iloc[i].values
 
-    # crf.structraining(bags, mentions, retweets, labels)
+    crf.structraining(pca_dict, mentions, retweets, labels)
 
 
 

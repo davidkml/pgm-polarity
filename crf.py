@@ -355,7 +355,7 @@ if __name__ == '__main__':
     mentions, retweets, user_tags = crf.establish_dict_using_all()
     vocabulary = crf.establish_vocabulary()
     assert  len(vocabulary) == crf.top_seq
-    bags = crf.establish_bag(user_tags, vocabulary)
+    # bags = crf.establish_bag(user_tags, vocabulary)
     # crf.to_train_embedding(bags, labels)
     # crf.extract_feature(bags)
     # crf.embedding_training(mentions, retweets, labels)
@@ -363,8 +363,8 @@ if __name__ == '__main__':
     #     print(bags[key])
     # features, labels = crf.node2feature(bags, mentions, retweets, labels)
     # crf.suitetraining(features, labels)
-    # with open("./objects/pca200_df.pickle", 'rb') as f:
-    #     bags = pickle.load(f)
+    with open("./objects/pca200_df.pickle", 'rb') as f:
+        bags = pickle.load(f)
     pca_dict= {}
     for i in range(bags.shape[0]):
         pca_dict[str(i)] = bags.iloc[i].values

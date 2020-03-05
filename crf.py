@@ -264,7 +264,7 @@ class CrfClassifier:
         total_labels = []
         for user_id, bag in bags.items():
             if user_id in labels:
-                total_features.append(bag/np.sum(bag))
+                total_features.append(bag)
                 total_labels.append(labels[user_id])
 
         with open('feature_ori.p', 'wb') as f:
@@ -343,7 +343,7 @@ class CrfClassifier:
         X_test, y_test = total_datas[ratio:], total_labels[ratio:]
 
         model = EdgeFeatureGraphCRF(inference_method="max-product")
-        ssvm = FrankWolfeSSVM(model=model, C=1, max_iter=10)
+        ssvm = FrankWolfeSSVM(model=model, C=0.1, max_iter=10)
         ssvm.fit(X_train, y_train)
         result = ssvm.score(X_test, y_test)
         print(result)
@@ -355,7 +355,7 @@ if __name__ == '__main__':
     mentions, retweets, user_tags = crf.establish_dict_using_all()
     vocabulary = crf.establish_vocabulary()
     assert  len(vocabulary) == crf.top_seq
-    # bags = crf.establish_bag(user_tags, vocabulary)
+    bags = crf.establish_bag(user_tags, vocabulary)
     # crf.to_train_embedding(bags, labels)
     # crf.extract_feature(bags)
     # crf.embedding_training(mentions, retweets, labels)
@@ -363,12 +363,11 @@ if __name__ == '__main__':
     #     print(bags[key])
     # features, labels = crf.node2feature(bags, mentions, retweets, labels)
     # crf.suitetraining(features, labels)
-    with open("./objects/pca200_df.pickle", 'rb') as f:
-        bags = pickle.load(f)
+    # with open("./objects/pca200_df.pickle", 'rb') as f:
+    #     bags = pickle.load(f)
     pca_dict= {}
     for i in range(bags.shape[0]):
         pca_dict[str(i)] = bags.iloc[i].values
-
     crf.structraining(pca_dict, mentions, retweets, labels)
 
 

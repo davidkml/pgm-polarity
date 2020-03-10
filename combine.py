@@ -245,8 +245,8 @@ class CrfClassifier:
             result = len(accuracy)/float(len(total))
             print('iter {} result = {}/{} = {}'.format(i, len(accuracy), len(total), result))
             self.pert_dict[pert].append([result, count])
-            #if count == 0:
-             #   break
+            if count == 0:
+               break
 
 
 
@@ -263,10 +263,10 @@ if __name__ == '__main__':
         pca_dict[str(i)] = bags.iloc[i].values
     # crf.structraining(pca_dict, mentions, retweets, labels)
 
-    for pert in np.arange(0.8, 1, 0.1):
+    for pert in np.arange(0.1, 1, 0.1):
         print('training with {} seen........................................'.format(pert))
         crf.combined_trainng(pert, pca_dict, mentions, retweets, labels)
 
-    with open('pert_dict_2.p','wb') as f:
+    with open('pert_dict.p','wb') as f:
         pickle.dump(crf.pert_dict, f)
 

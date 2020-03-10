@@ -16,6 +16,7 @@ class CrfClassifier:
     def __init__(self):
         self.top_seq = 200
         self.embedding_dim = 50
+        self.pert_dict = {}
 
     def establish_vocabulary(self):
         word_freq = {}
@@ -182,7 +183,6 @@ class CrfClassifier:
                 node_id = np.vstack([node_id, np.array([[int(retweet_id)]])])
                 edge_nodes = np.vstack([edge_nodes, np.array([0, cnt + 1 + num_mentioned])])
                 cnt += 1
-
             train_datas.append((features, edge_nodes.astype(int)))
             train_labels.append(clique_labels)
             node_ids.append(node_id)
@@ -195,10 +195,12 @@ class CrfClassifier:
         adj_matrix = np.load("objects/adj_matrix.npz")['arr_0']
         print('sampling labels')
         clabels, c_idxs = get_labels_subsample(all_graph, 'centrality', pert)
-        adj_matrix_t = torch.FloatTensor(adj_matrix)
         test_ids_ori = np.where(clabels == -1)[0]
+        adj_matrix_t = torch.FloatTensor(adj_matrix)
 
         # training with label propagation
+        test_datas, test_labels, node_ids = self.get_datas(range(0, clabels.shape[0]), labels, mentions, retweets, bags)
+        self.pert_dict[pert] = []
         for i in range(10):
             clabels_t = torch.LongTensor(clabels)
             label_propagation_central = LabelPropagation(adj_matrix_t)
@@ -209,9 +211,6 @@ class CrfClassifier:
             # training with CRF
             print('find training data')
             train_datas, train_labels, _ = self.get_datas(c_idxs, labels, mentions, retweets, bags)
-            test_datas, test_labels, node_ids = self.get_datas(test_ids, labels, mentions, retweets, bags)
-            if i == 0:
-                x_test_ori, y_test_ori = test_datas, test_labels
             print(len(train_datas))
             print(len(test_datas))
             X_train, y_train = train_datas, train_labels
@@ -220,18 +219,34 @@ class CrfClassifier:
             ssvm = FrankWolfeSSVM(model=model, C=0.1, max_iter=10)
             ssvm.fit(X_train, y_train)
             y_preds = ssvm.predict(test_datas)
-            result = ssvm.score(x_test_ori, y_test_ori)
-            print('iter {} result = {}'.format(i, result))
+            # result = ssvm.score(test_datas, test_labels)
+            # print('iter {} result = {}'.format(i, result))
             count = 0
+            accuracy = []
+            total = []
             for clique_idx, clique in enumerate(y_preds):
                 for node_idx, node in enumerate(clique):
-                    node_id = node_ids[clique_idx][node_idx]
-                    if node == central_propagation_df.iloc[node_id].values:
-                        clabels[int(node_id)] = node
-                        if not int(node_id) in c_idxs:
-                            c_idxs = np.append(c_idxs, int(node_id))
-                            count += 1
+                    node_id = node_ids[clique_idx][node_idx][0]
+                    node_id = int(node_id)
+                    if node_id in test_ids_ori and str(node_id) in labels:
+                        if node_id not in total:
+                            total.append(node_id)
+                        if node == labels[str(node_id)]:
+                            if not node_id in accuracy:
+                                accuracy.append(node_id)
+
+                    if node_id in test_ids:
+                        if node == central_propagation_df.iloc[node_id].values:
+                            clabels[int(node_id)] = node
+                            if not int(node_id) in c_idxs:
+                                c_idxs = np.append(c_idxs, int(node_id))
+                                count += 1
             print('iter {} update {} new labels'.format(i, count))
+            result = len(accuracy)/float(len(total))
+            print('iter {} result = {}/{} = {}'.format(i, len(accuracy), len(total), result))
+            self.pert_dict[pert].append([result, count])
+            #if count == 0:
+             #   break
 
 
 
@@ -248,6 +263,10 @@ if __name__ == '__main__':
         pca_dict[str(i)] = bags.iloc[i].values
     # crf.structraining(pca_dict, mentions, retweets, labels)
 
-    crf.combined_trainng(0.5, pca_dict, mentions, retweets, labels)
+    for pert in np.arange(0.8, 1, 0.1):
+        print('training with {} seen........................................'.format(pert))
+        crf.combined_trainng(pert, pca_dict, mentions, retweets, labels)
 
+    with open('pert_dict_2.p','wb') as f:
+        pickle.dump(crf.pert_dict, f)
 

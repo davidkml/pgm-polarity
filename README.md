@@ -29,7 +29,19 @@ pgm-polarity
 |       |--combine.py
 |       |--combine_utils.py
 ```
-# testing models
+## Dependency
+numpy
+
+scikit-learn
+
+PyTorch
+
+PyStruct
+
+python-igraph
+
+## testing models
+The environment is run under Python3
 KNN: ```python xxxx.py```
 
 Logistic Regression: ```python xxxx.py```

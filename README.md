@@ -40,7 +40,7 @@ PyStruct
 
 python-igraph
 
-## testing models
+## Testing Models
 The environment is run under Python3
 KNN: ```python xxxx.py```
 

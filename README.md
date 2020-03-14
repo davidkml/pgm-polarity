@@ -40,6 +40,7 @@ python-igraph
 
 ## Testing Models
 The environment is run under Python3
+
 Baselines(KNN and Logistic Regression): please follow the viz-and-baseline.ipynb
 
 CRF: ```python crf.py```

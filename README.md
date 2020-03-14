@@ -17,10 +17,8 @@ pgm-polarity
 |        |--adj_matrix.npz(adjacent matrix for label propagation)
 |
 |--model
-|   |--KNN
-|       |--xxxxx
-|   |--Logistic Regression
-|       |--xxxx
+|   |--Baselines
+|       |--viz-and-baseline.ipynb
 |   |--CRF
 |       |--crf.py
 |   |--Label propagation
@@ -42,12 +40,10 @@ python-igraph
 
 ## Testing Models
 The environment is run under Python3
-KNN: ```python xxxx.py```
-
-Logistic Regression: ```python xxxx.py```
+Baselines(KNN and Logistic Regression): please follow the viz-and-baseline.ipynb
 
 CRF: ```python crf.py```
 
-Label Propagtion: please following the label-propagation.ipynb
+Label Propagtion: please follow the label-propagation.ipynb
 
 Combined Training: ```python combine.py```. The default sampling method is centrality sampling considering influential nodes. Change 'centrality' to 'random' in line 197, if you want to run random sampling.
